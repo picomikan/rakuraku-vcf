@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+# ドコモのらくらくスマートフォン3（F-06F）のアドレス帳データ(VCF)を
+# グループ単位にソート＆分割＆変換
+#   20200621 　初版
+#   20200920 　コメント追加。引数見直し。
+
 import sys
 import codecs
 import os
@@ -8,14 +13,15 @@ import re
 import jaconv
 import datetime
 
+# デフォルト値
 # 入力ファイルのエンコード: Windows版シフトJIS
-ENCODE = 'cp932'
+ENCODE_DEFAULT = 'cp932'
 
-# 半角カナを全角に変換
-HAN2ZEN = True
+# 半角カナを半角のままとするかのフラグ(デフォルトは変換)
+HAN2HAN_DEFAULT = False
 
-# グループ毎のファイルに出力するかどうか
-OUTPUT_FILES = False
+# グループ毎のファイルに分割出力するかどうか
+DIVFILE_DEFAULT = False
 
 # 無視する文字列一覧
 ignore_strs = [';CHARSET=SHIFT_JIS']
@@ -49,7 +55,15 @@ docomo_tags = {
 
 # Usage
 def usage(argv0):
-    print('Usage: ' + argv0 + ' {filename | -} [-u][-h][-O][--encoding=XXX][--help]')
+    '''
+    Usage表示
+
+    Args:
+        argv0: コマンドラインのプログラム名
+
+    '''
+
+    print('Usage: ' + argv0 + ' {filename | -} [-u][-h][-O][--encoding=XXX][--help]', file=sys.stderr)
     print("""\
 \t-  : standard input file
 \t-u : Use utf-8 instead of cp932
@@ -57,7 +71,7 @@ def usage(argv0):
 \t-O : Output files per group
 \t--encoding=XXX : Specify encode
 \t--help : print usage
-""")
+""", file=sys.stderr)
     return
 
 # グループ名ごとのデータ
@@ -65,14 +79,24 @@ def usage(argv0):
 #   value: personの配列
 group_list = {}
 
-def main():
-    # 引数を解析
-    rc, file_name = ana_arg(sys.argv)
-    if rc < 0:
-        return rc
+# VCFファイルを読み込んで変換
+def convVCF(in_path, han2han=False, encode='cp932', divfile=False, stdout=True):
+    '''
+    指定したVCFファイルを変換
+
+    変換結果は標準出力 or 複数ファイルに出力。
+
+    Args:
+        in_path: 入力VCFファイルのパス
+        han2han: 半角カナをそのままにするフラグ
+        encode : 入力ファイルのエンコード。デフォルトは cp932(Windows版シフトJIS)
+        divfile: グループ毎の複数のファイルに分割出力するかのフラグ
+        stdout : 変換結果を標準出力するかファイル出力するかのフラグ
+
+    '''
 
     # ファイル読み込み
-    lines = read_file(file_name)
+    lines = read_file(in_path, han2han, encode)
 
     # 入力データの各行を処理
     next_person = True
@@ -143,13 +167,19 @@ def main():
 
     # VCARD 3.0に変換
     for g_name in group_list.keys():
-        print('### Group Name:[' + g_name + ']')
-
-        if OUTPUT_FILES:
+        if divfile:
+            # 複数ファイルに分割出力
             out_file = dt_str + g_name + '.VCF'
             f = open(out_file, mode='w')
-        else:
+        elif stdout:
+            # 標準出力
             f = sys.stdout
+            print('### Group Name:[' + g_name + ']')
+        else:
+            # 単一ファイルに出力
+            out_file = dt_str + '_converted' + '.VCF'
+            f = open(out_file, mode='a')
+            print('### Group Name:[' + g_name + ']', file=f)
 
         for person in group_list[g_name]:
 
@@ -176,64 +206,107 @@ def main():
         if f != sys.stdout:
             f.close()
 
-    return 0
+    return
 
-# 引数を解析
-def ana_arg(argv):
-    global ENCODE
-    global HAN2ZEN
-    global OUTPUT_FILES
+# 引数を解析して、入力ファイル名を取得
+def ana_arg(*argv):
+    '''
+    コマンドライン引数を解析
+
+    Args:
+        *argv: コマンドライン引数(可変長)
+
+    Returns:
+        rc        : 復帰値
+        file_name : 入力ファイルのパス
+        han2han   : 半角カナをそのままにするフラグ
+        encode    : 入力ファイルのエンコード。デフォルトは cp932(Windows版シフトJIS)
+        divfile   : グループ毎の複数のファイルに分割出力するかのフラグ
+    '''
+
+    global ENCODE_DEFAULT
+    global HAN2HAN_DEFAULT
+    global DIVFILE_DEFAULT
+
+    encode = ENCODE_DEFAULT
+    han2han = HAN2HAN_DEFAULT
+    divfile = DIVFILE_DEFAULT
 
     OPT_ENCODE = '--encoding='
 
-    if len(argv) < 2:
-        usage(argv[0])
-        return -1, ''
+    rc = 0
+    file_name = ''
 
-    if argv[1] == '-':
-        # 標準入力
-        file_name = sys.stdin.fileno()
-    
-    elif argv[1][:1] == '-':
-        usage(argv[0])
-        return -1, ''
+    loop = True
+    while loop:
+        loop = False    # 実際にはループしない。returnを一箇所にまとめたいだけ。
 
-    else:
-        file_name = sys.argv[1]
+        if len(argv) < 2:
+            usage(argv[0])
+            rc = -1
+            break
 
-        if not os.path.isfile(file_name):
-            print('File not found.')
-            return -2, ''
-    
-    if len(sys.argv) >= 3:
-        i = 2
-        while i < len(argv):
+        if argv[1] == '-':
+            # 標準入力
+            file_name = sys.stdin.fileno()
+        
+        elif argv[1][:1] == '-':
+            usage(argv[0])
+            rc = -1
+            break
 
-            if argv[i] == '-u':
-                ENCODE = 'utf-8'
+        else:
+            file_name = sys.argv[1]
 
-            elif argv[i][:len(OPT_ENCODE)] == OPT_ENCODE:
-                ENCODE = argv[i][len(OPT_ENCODE):]
+            if not os.path.isfile(file_name):
+                print('File not found.', file=sys.stderr)
+                rc = -2
+                break
+        
+        if len(sys.argv) >= 3:
+            i = 2
+            while i < len(argv):
 
-            elif argv[i] == '-h':
-                HAN2ZEN = False
+                if argv[i] == '-u':
+                    encode = 'utf-8'
 
-            elif argv[i] == '-O':
-                OUTPUT_FILES = True
+                elif argv[i][:len(OPT_ENCODE)] == OPT_ENCODE:
+                    encode = argv[i][len(OPT_ENCODE):]
 
-            elif argv[i] == '--help':
-                usage(argv[0])
-                return -1, ''
+                elif argv[i] == '-h':
+                    han2han = True
 
-            i += 1
+                elif argv[i] == '-O':
+                    divfile = True
 
-    return 0, file_name
+                elif argv[i] == '--help':
+                    usage(argv[0])
+                    rc = -1
+                    break
+
+                i += 1
+            
+        # end of while loop
+
+    return rc, file_name, han2han, encode, divfile
 
 # データ読み込み
-def read_file(in_path):
+def read_file(in_path, han2han=False, encode='cp932'):
+    '''
+    データを読み込む
+
+    Args:
+        in_path: 入力ファイルのパス
+        han2han: 半角カナをそのままにするフラグ
+        encode : 入力ファイルのエンコード。デフォルトは cp932(Windows版シフトJIS)
+
+    Returns:
+        lines: ファイルを読んだ結果。各要素が一行分の文字列の配列  
+    '''
+
     lines = []
 
-    with codecs.open(in_path, 'r', ENCODE) as f:
+    with codecs.open(in_path, 'r', encode) as f:
  
         # 一行単位で標準入力
         for line in f:
@@ -243,7 +316,7 @@ def read_file(in_path):
             if len(str) == 0:
                 continue
 
-            if HAN2ZEN:
+            if not han2han:
                 # 半角カナ -> 全角
                 str = jaconv.h2z(str)
 
@@ -254,6 +327,19 @@ def read_file(in_path):
 
 # 一行のデータをアイテムに変換
 def get_item(line):
+    '''
+    一行のデータをアイテムに変換
+
+    Args:
+        line: 1行分のデータ(1個の文字列)
+                例: "TEL;VOICE;09012345678"
+
+    Returns:
+        tag     : タグ。例だと"TEL"
+        subtags : サブタグ。複数でも可能。例だと"VOICE"
+        value   : 値。例だと"09012345678"
+    '''
+
     # 無視する文字列を除外
     for ignore_str in ignore_strs:
         line = re.sub(ignore_str, '', line)
@@ -271,6 +357,21 @@ def get_item(line):
 
 # アイテムをアドレス情報に追加
 def add_item(person, old_tag, subtags, value):
+    '''
+    アイテムをアドレス帳に追加
+
+    タグを変換したものをキーとする辞書に、サブタグと値を追加する。
+    追加する時重複排除。
+
+    Args:
+        person  : 一人分のアドレス情報。タグをキーにした辞書。
+        old_tag : 変換前のタグ
+        subtags : サブタグ
+        value   : 値
+
+    Returns:
+        -
+    '''
 
     # タグを変換
     tag = ''
@@ -315,6 +416,18 @@ def add_item(person, old_tag, subtags, value):
 
 # グループ毎の配列に要素追加
 def add_person(group_list, g_names, person):
+    '''
+    グループ毎の配列に要素追加
+
+    Args:
+        group_list: グループ毎の属している人の配列
+        g_names   : グループ名の配列。各グループに追加する。
+        person    : 一人分のデータ
+
+    Returns:
+        -
+    '''
+
     # グループ名の個数が 0ならデフォルト
     if len(g_names) == 0:
         g_names.append("default")
@@ -343,13 +456,30 @@ def add_person(group_list, g_names, person):
 
 # 人(アイテム一覧)同士で比較
 def compare_persons(person0, person1):
-    # 辞書と辞書を比較して、不一致のものを抽出
+    '''
+    辞書と辞書を比較して、不一致のものを抽出
+
+    Args
+    - person0, person1: それぞれ一人分のアドレス情報(タグをキーにした辞書)
+
+    Returns:
+    - 不一致の要素の数
+    '''
     tags_unmatch = [tag for tag in person0 if tag not in person1 or person0[tag] != person1[tag]]
 
     return len(tags_unmatch)
 
 # VCARD 3.0に変換
 def conv_person(person):
+    '''
+    一人分のアドレス情報をVCARD 3.0に変換
+
+    Args:
+        person: 一人分のアドレス情報(タグをキーにした辞書)
+
+    Returns:
+        -
+    '''
 
     if '_CONVERTED' in person:
         # 既に変換済み
@@ -490,6 +620,20 @@ def conv_person(person):
 
 # アイテムを出力
 def put_item(f, tag, item):
+    '''
+    アイテムを出力
+
+    指定タグと対応するサブタグ、値を整形して出力
+
+    Args:
+        f    : 出力ファイルオブジェクト
+        tag  : タグ
+        item : アイテム(タグをキーにした一人分のアドレス情報)
+
+    Returns:
+        -
+    '''
+
     str = ''
 
     # tag
@@ -515,6 +659,19 @@ def put_item(f, tag, item):
 
 # main
 if __name__ == "__main__":
-    rc = main()
-    sys.exit(rc)
+    rc = 0
 
+    try:
+        # 引数を解析して、入力ファイル名を取得
+        rc, file_name, han2han, encode, divfile = ana_arg(*sys.argv)
+        if rc < 0:
+            sys.exit(rc)
+
+        # 変換
+        convVCF(file_name, han2han, encode, divfile)
+
+    except Exception as e:
+        print(e, file=sys.stderr)
+        rc = -1
+
+    sys.exit(rc)
