@@ -5,6 +5,8 @@
 # グループ単位にソート＆分割＆変換
 #   20200621 　初版
 #   20200920 　コメント追加。引数見直し。
+#   20200921 　convVCF()の復帰値に、出力ファイル名一覧を追加
+#              グループ名の一行出力を標準出力時だけに変更
 
 import sys
 import codecs
@@ -84,7 +86,7 @@ def convVCF(in_path, han2han=False, encode='cp932', divfile=False, stdout=True):
     '''
     指定したVCFファイルを変換
 
-    変換結果は標準出力 or 複数ファイルに出力。
+    変換結果は標準出力 or 単一ファイル or 複数ファイルに出力。
 
     Args:
         in_path: 入力VCFファイルのパス
@@ -92,6 +94,9 @@ def convVCF(in_path, han2han=False, encode='cp932', divfile=False, stdout=True):
         encode : 入力ファイルのエンコード。デフォルトは cp932(Windows版シフトJIS)
         divfile: グループ毎の複数のファイルに分割出力するかのフラグ
         stdout : 変換結果を標準出力するかファイル出力するかのフラグ
+
+    Returns:
+        out_files: 出力ファイル名の一覧(標準出力の場合は空っぽ)
 
     '''
 
@@ -165,21 +170,32 @@ def convVCF(in_path, han2han=False, encode='cp932', divfile=False, stdout=True):
     dt_now = datetime.datetime.now()
     dt_str = dt_now.strftime('%Y%m%d%H%M%S')
 
+    # 出力ファイル名一覧
+    out_files = []
+
     # VCARD 3.0に変換
     for g_name in group_list.keys():
         if divfile:
             # 複数ファイルに分割出力
             out_file = dt_str + g_name + '.VCF'
             f = open(out_file, mode='w')
+
+            # 出力ファイル名を追加
+            out_files.append(out_file)
+
         elif stdout:
             # 標準出力
             f = sys.stdout
             print('### Group Name:[' + g_name + ']')
+
         else:
             # 単一ファイルに出力
             out_file = dt_str + '_converted' + '.VCF'
             f = open(out_file, mode='a')
-            print('### Group Name:[' + g_name + ']', file=f)
+
+            # 出力ファイル名を追加
+            if out_file not in out_files:
+                out_files.append(out_file)
 
         for person in group_list[g_name]:
 
@@ -206,7 +222,7 @@ def convVCF(in_path, han2han=False, encode='cp932', divfile=False, stdout=True):
         if f != sys.stdout:
             f.close()
 
-    return
+    return out_files
 
 # 引数を解析して、入力ファイル名を取得
 def ana_arg(*argv):
