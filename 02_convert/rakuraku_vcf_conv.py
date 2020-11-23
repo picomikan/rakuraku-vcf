@@ -7,6 +7,7 @@
 #   20200920 　コメント追加。引数見直し。
 #   20200921 　convVCF()の復帰値に、出力ファイル名一覧を追加
 #              グループ名の一行出力を標準出力時だけに変更
+#   20201124   NからFNを求める論理が動いてなかった問題を修正
 
 import sys
 import codecs
@@ -540,12 +541,12 @@ def conv_person(person):
             while len(values) < 5:
                 values.append('')
 
-                # Nを再結合
-                item['value'] = ';'.join(values)
+            # Nを再結合
+            item['value'] = ';'.join(values)
 
-                # FN がなければ 'N'から作って追加
-                if not 'FN' in person:
-                    person['FN'] = [{'subtags':[], 'value':values[3] + values[1] + values[2] + values[0] + values[4]}]
+            # FN がなければ 'N'から作って追加
+            if not 'FN' in person:
+                person['FN'] = [{'subtags':[], 'value':values[3] + values[1] + values[2] + values[0] + values[4]}]
 
     # ADR変換の前に '_POSTAL'があれば退避
     postal_code = ''
