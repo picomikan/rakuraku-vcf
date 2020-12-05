@@ -1,0 +1,23 @@
+.vcf_area {
+  font-size:12pt;
+  width:80%;
+}
+input.vcfbtn, vcfbtn {
+  font-size:12pt;
+  padding: 0px 0px;
+  width: 80px;
+  height: 40px;
+}
+#outputText {
+font: 400 13.3333px Arial;
+color: black;
+font-size:12pt;
+width:80%;
+height:400px;
+padding:11px;
+margin:0;
+/*box-sizing:border-box;*/
+overflow:auto;
+border:1px solid #ccc;
+will-change: transform;
+}

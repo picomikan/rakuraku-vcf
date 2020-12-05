@@ -1,0 +1,14 @@
+<!DOCTYPE html><html><meta charset="utf-8">
+<head>
+  <title>VCFのFNがなければNから生成</title>
+  <link rel="stylesheet" href="NtoFN.css">  
+</head>
+<body>
+  <h3>VCFファイルの内容(変換前)</h3>
+  <textarea id="inputText" class="vcf_area" cols="80" rows="8" placeholder="VCFファイルの内容を貼り付けてください。"></textarea>
+  <p><input type="button" class="vcfbtn" onclick="convert()" value="変換"> <input type="button" class="vcfbtn" onclick="reset()" value="リセット" /></p>
+  <h3>変換結果</h3>
+  <div id="outputText"></div>
+  <script type="text/javascript" src="NtoFN.js"></script>
+</body>
+</html>
